@@ -1,14 +1,17 @@
 const {
   app,
   BrowserWindow,
+  dialog,
   globalShortcut,
   ipcMain,
   screen,
+  systemPreferences,
   Tray,
   Menu,
   nativeImage,
 } = require("electron");
 const path = require("path");
+const { execSync } = require("child_process");
 const Store = require("electron-store");
 const { uIOhook, UiohookKey } = require("uiohook-napi");
 
@@ -259,13 +262,15 @@ function setupInputHooks() {
 
   // 키보드 입력 감지
   uIOhook.on("keydown", (e) => {
-    // 한/영 키 토글
-    if (e.keycode === HANGUL_KEYCODE) {
-      inputLang = inputLang === "ko" ? "en" : "ko";
-      console.log(`[lang] 한/영 토글 → ${inputLang}`);
-      return;
+    // 한/영 키 토글 (Windows: 0x70, macOS: 폴링으로 처리)
+    if (process.platform === "win32") {
+      if (e.keycode === HANGUL_KEYCODE) {
+        inputLang = inputLang === "ko" ? "en" : "ko";
+        console.log(`[lang] 한/영 토글 → ${inputLang}`);
+        return;
+      }
+      if (e.keycode === HANJA_KEYCODE) return;
     }
-    if (e.keycode === HANJA_KEYCODE) return;
 
     if (!cfg.character.enabled) return;
 
@@ -363,8 +368,29 @@ let inputLang = "en";
 const HANGUL_KEYCODE = 0x70;
 const HANJA_KEYCODE = 0x71;
 
-// ─── 마우스 이동 (koffi → SetCursorPos) ──────────────
-let moveMouse = (x, y) => {};  // 기본: no-op
+// ─── macOS 접근성 권한 체크 ───────────────────────────
+function checkAccessibilityPermission() {
+  if (process.platform !== "darwin") return;
+
+  const trusted = systemPreferences.isTrustedAccessibilityClient(false);
+  if (!trusted) {
+    dialog.showMessageBoxSync({
+      type: "warning",
+      title: "접근성 권한 필요",
+      message:
+        "Mouse Finder가 키보드/마우스 이벤트를 감지하려면 접근성 권한이 필요합니다.\n\n" +
+        "시스템 설정 → 개인 정보 보호 및 보안 → 접근성에서 Mouse Finder를 허용해 주세요.\n\n" +
+        "권한 설정 후 앱을 재시작해 주세요.",
+    });
+    // 시스템 접근성 설정 열기
+    systemPreferences.isTrustedAccessibilityClient(true);
+  } else {
+    console.log("[macOS] 접근성 권한 확인됨");
+  }
+}
+
+// ─── 마우스 이동 (Windows: SetCursorPos, macOS: CoreGraphics) ─
+let moveMouse = (x, y) => {};
 
 function initMoveMouse() {
   if (process.platform === "win32") {
@@ -373,9 +399,28 @@ function initMoveMouse() {
       const user32 = koffi.load("user32.dll");
       const SetCursorPos = user32.func("int __stdcall SetCursorPos(int x, int y)");
       moveMouse = (x, y) => SetCursorPos(x, y);
-      console.log("[mouse] SetCursorPos 초기화 성공");
+      console.log("[mouse] Win32 SetCursorPos 초기화 성공");
     } catch (e) {
-      console.error("[mouse] SetCursorPos 실패:", e.message);
+      console.error("[mouse] Win32 초기화 실패:", e.message);
+    }
+  } else if (process.platform === "darwin") {
+    try {
+      const koffi = require("koffi");
+      const CGPoint = koffi.struct("CGPoint", { x: "double", y: "double" });
+      const cg = koffi.load("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics");
+      const CGWarpMouseCursorPosition = cg.func("int32 CGWarpMouseCursorPosition(CGPoint point)");
+      moveMouse = (x, y) => CGWarpMouseCursorPosition({ x, y });
+      console.log("[mouse] macOS CGWarpMouseCursorPosition 초기화 성공");
+    } catch (e) {
+      // fallback: osascript
+      moveMouse = (x, y) => {
+        try {
+          execSync(`osascript -e 'tell application "System Events" to key code 0' -e ''`);
+          // CoreGraphics fallback via python
+          execSync(`python3 -c "import Quartz; Quartz.CGWarpMouseCursorPosition((${x}, ${y}))"`);
+        } catch {}
+      };
+      console.log("[mouse] macOS fallback 모드 (python3)");
     }
   }
 }
@@ -397,9 +442,27 @@ function detectInitialInputLang() {
       inputLang = langId === 0x0412 ? "ko" : "en";
       console.log(`[lang] 초기 입력 언어 감지: ${inputLang} (0x${langId.toString(16)})`);
     } catch (e) {
-      console.log("[lang] 초기 감지 실패, 기본값 en 사용");
+      console.log("[lang] Win32 초기 감지 실패, 기본값 en 사용");
     }
+  } else if (process.platform === "darwin") {
+    detectMacInputLang();
+    // macOS는 한/영 키가 없으므로 주기적 폴링으로 감지
+    setInterval(detectMacInputLang, 300);
   }
+}
+
+function detectMacInputLang() {
+  try {
+    const result = execSync(
+      "defaults read ~/Library/Preferences/com.apple.HIToolbox AppleSelectedInputSources 2>/dev/null | head -20",
+      { timeout: 1000, encoding: "utf-8" }
+    );
+    const newLang = /Korean|HangulKeyboard|2SetKorean|Hangul/i.test(result) ? "ko" : "en";
+    if (newLang !== inputLang) {
+      console.log(`[lang] macOS: ${inputLang} → ${newLang}`);
+      inputLang = newLang;
+    }
+  } catch {}
 }
 
 // ─── 키코드 → 문자 매핑 ──────────────────────────────
@@ -547,6 +610,8 @@ ipcMain.handle("move-mouse", (_, { x, y }) => {
 
 // ─── 앱 라이프사이클 ──────────────────────────────────
 app.whenReady().then(() => {
+  checkAccessibilityPermission();
+
   try {
     createOverlayWindows();
     console.log(`[app] 오버레이 윈도우 ${overlayWindows.length}개 생성됨`);
