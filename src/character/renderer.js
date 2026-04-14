@@ -4,6 +4,12 @@
  * - 타이핑 속도(WPM)에 따라 캐릭터 표정 + 말풍선 스타일 변경
  */
 
+// 우클릭 → 설정 메뉴
+document.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  window.api.showCharacterMenu();
+});
+
 const bubble = document.getElementById("bubble");
 const bubbleText = document.getElementById("bubble-text");
 const charImg = document.getElementById("char-img");

@@ -11,6 +11,9 @@ contextBridge.exposeInMainWorld("api", {
   // 캐릭터용
   onKeyTyped: (cb) => ipcRenderer.on("key-typed", (_, d) => cb(d)),
 
+  // 캐릭터 우클릭 → 설정 메뉴
+  showCharacterMenu: () => ipcRenderer.send("show-character-menu"),
+
   // 설정
   getConfig: () => ipcRenderer.invoke("get-config"),
 });

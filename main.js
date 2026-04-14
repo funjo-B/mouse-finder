@@ -12,6 +12,11 @@ const path = require("path");
 const Store = require("electron-store");
 const { uIOhook, UiohookKey } = require("uiohook-napi");
 
+const DEV = process.argv.includes("--dev");
+
+// Windows 투명 윈도우 렌더링 지원
+app.commandLine.appendSwitch("enable-transparent-visuals");
+
 // ─── 설정 ────────────────────────────────────────────
 const store = new Store({
   defaults: {
@@ -25,14 +30,18 @@ const store = new Store({
     },
     clickTrail: {
       enabled: true,
+      effectType: "crack",
       count: 3,
       color: "#FF4444",
+      crackSize: 80,
       fadeDuration: 1.0,
     },
     idleRipple: {
       enabled: true,
+      effectType: "ripple",
       idleSeconds: 3,
       color: "#4488FF",
+      size: 80,
       interval: 2.0,
     },
     character: {
@@ -42,9 +51,13 @@ const store = new Store({
   },
 });
 
-let overlayWindow = null;
+let overlayWindows = [];   // 모니터별 오버레이 윈도우
 let characterWindow = null;
 let tray = null;
+
+// ─── 설정 캐시 (store.get() 파일 I/O 제거) ──────────
+let cfg = store.store;  // 메모리 캐시
+store.onDidAnyChange((newVal) => { cfg = newVal; });
 
 // 마우스 유휴 감지용
 let lastMousePos = { x: 0, y: 0 };
@@ -56,33 +69,52 @@ const POLL_INTERVAL_MS = 500;
 let recentKeyTimes = [];
 const SPEED_WINDOW_MS = 3000;
 
-// ─── 오버레이 윈도우 ──────────────────────────────────
-function createOverlayWindow() {
+// ─── 오버레이 윈도우 (모니터별 1개) ──────────────────
+function createOverlayWindows() {
   const displays = screen.getAllDisplays();
-  const bounds = getAggregatedBounds(displays);
+  console.log(`[overlay] 모니터 ${displays.length}개 감지`);
 
-  overlayWindow = new BrowserWindow({
-    x: bounds.x,
-    y: bounds.y,
-    width: bounds.width,
-    height: bounds.height,
-    transparent: true,
-    frame: false,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    focusable: false,
-    hasShadow: false,
-    resizable: false,
-    type: process.platform === "darwin" ? "panel" : "toolbar",
-    webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
-      contextIsolation: true,
-    },
-  });
+  for (const display of displays) {
+    const { x, y, width, height } = display.bounds;
+    console.log(`[overlay] 모니터 생성: ${width}x${height} @ (${x}, ${y})`);
 
-  overlayWindow.setIgnoreMouseEvents(true);
-  overlayWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  overlayWindow.loadFile("src/overlay/index.html");
+    const winOpts = {
+      x, y, width, height,
+      transparent: true,
+      frame: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      focusable: false,
+      hasShadow: false,
+      resizable: false,
+      backgroundColor: "#00000000",
+      webPreferences: {
+        preload: path.join(__dirname, "preload.js"),
+        contextIsolation: true,
+      },
+    };
+    if (process.platform === "darwin") {
+      winOpts.type = "panel";
+    }
+
+    const win = new BrowserWindow(winOpts);
+    win.setIgnoreMouseEvents(true);
+    win.setAlwaysOnTop(true, "screen-saver");
+    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+
+    win.webContents.on("did-finish-load", () => {
+      console.log(`[overlay] 모니터(${x},${y}) 로드 완료`);
+    });
+
+    win.loadFile("src/overlay/index.html");
+    if (DEV && display === displays[0]) {
+      win.webContents.openDevTools({ mode: "detach" });
+    }
+
+    // 이 윈도우가 담당하는 모니터 범위 저장
+    win._displayBounds = { x, y, width, height };
+    overlayWindows.push(win);
+  }
 }
 
 // ─── 캐릭터 윈도우 ───────────────────────────────────
@@ -103,33 +135,55 @@ function createCharacterWindow() {
     skipTaskbar: true,
     hasShadow: false,
     resizable: false,
+    backgroundColor: "#00000000",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
     },
   });
 
+  characterWindow.setAlwaysOnTop(true, "screen-saver");
   characterWindow.setVisibleOnAllWorkspaces(true);
-  characterWindow.loadFile("src/character/index.html");
 
-  if (!store.get("character.enabled")) {
+  characterWindow.webContents.on("did-finish-load", () => {
+    console.log("[character] 로드 완료");
+  });
+
+  characterWindow.loadFile("src/character/index.html");
+  if (DEV) characterWindow.webContents.openDevTools({ mode: "detach" });
+
+  if (!cfg.character.enabled) {
     characterWindow.hide();
   }
 }
 
 // ─── 시스템 트레이 ───────────────────────────────────
 function createTray() {
-  const iconSize = 16;
-  const icon = nativeImage.createEmpty();
-  // 간단한 트레이 아이콘 (1x1 fallback — 실제 아이콘 파일이 있으면 교체)
-  const trayIconPath = path.join(__dirname, "assets", "tray-icon.png");
-  try {
-    tray = new Tray(nativeImage.createFromPath(trayIconPath));
-  } catch {
-    // 아이콘 파일이 없으면 빈 이미지 사용
-    const img = nativeImage.createEmpty();
-    tray = new Tray(img);
+  // 16x16 트레이 아이콘을 코드로 생성 (파란 원 + 흰 커서)
+  const size = 16;
+  const canvas = Buffer.alloc(size * size * 4);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const idx = (y * size + x) * 4;
+      const dx = x - 8, dy = y - 8;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist <= 7) {
+        canvas[idx] = 0x6E;     // R
+        canvas[idx + 1] = 0xC6; // G
+        canvas[idx + 2] = 0xFF; // B
+        canvas[idx + 3] = 255;  // A
+      }
+    }
   }
+  // 중앙에 흰 점
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const idx = ((8 + dy) * size + (8 + dx)) * 4;
+      canvas[idx] = 255; canvas[idx + 1] = 255; canvas[idx + 2] = 255; canvas[idx + 3] = 255;
+    }
+  }
+  const trayIcon = nativeImage.createFromBuffer(canvas, { width: size, height: size });
+  tray = new Tray(trayIcon);
 
   const contextMenu = Menu.buildFromTemplate([
     { label: "Mouse Finder v2", enabled: false },
@@ -137,7 +191,7 @@ function createTray() {
     {
       label: "클릭 잔상",
       type: "checkbox",
-      checked: store.get("clickTrail.enabled"),
+      checked: cfg.clickTrail.enabled,
       click: (item) => {
         store.set("clickTrail.enabled", item.checked);
       },
@@ -145,7 +199,7 @@ function createTray() {
     {
       label: "유휴 물결파동",
       type: "checkbox",
-      checked: store.get("idleRipple.enabled"),
+      checked: cfg.idleRipple.enabled,
       click: (item) => {
         store.set("idleRipple.enabled", item.checked);
       },
@@ -153,7 +207,7 @@ function createTray() {
     {
       label: "타이핑 캐릭터",
       type: "checkbox",
-      checked: store.get("character.enabled"),
+      checked: cfg.character.enabled,
       click: (item) => {
         store.set("character.enabled", item.checked);
         if (item.checked) characterWindow?.show();
@@ -176,58 +230,62 @@ function createTray() {
 
 // ─── 전역 단축키 ─────────────────────────────────────
 function registerShortcuts() {
-  globalShortcut.register(store.get("findMouseHotkey"), () => {
+  const findKey = cfg.findMouseHotkey;
+  const ok = globalShortcut.register(findKey, () => {
     const pos = screen.getCursorScreenPoint();
-    sendToOverlay("beacon", {
-      x: pos.x,
-      y: pos.y,
-      ...store.get("beacon"),
-    });
+    sendToOverlay("beacon", { x: pos.x, y: pos.y, ...cfg.beacon });
   });
+  console.log(`[shortcut] ${findKey} 등록: ${ok ? "성공" : "실패"}`);
 
-  globalShortcut.register(store.get("teleportHotkey"), () => {
-    const tp = store.get("teleportPosition");
-    // Electron에는 마우스 이동 API가 없으므로 overlay에 위임
-    sendToOverlay("teleport-beacon", {
-      x: tp.x,
-      y: tp.y,
-      ...store.get("beacon"),
-    });
+  globalShortcut.register(cfg.teleportHotkey, () => {
+    const tp = cfg.teleportPosition;
+    // 마우스를 지정 위치로 이동
+    moveMouse(tp.x, tp.y);
+    sendToOverlay("teleport-beacon", { x: tp.x, y: tp.y, ...cfg.beacon });
   });
 }
 
 // ─── 입력 후킹 (uiohook) ─────────────────────────────
 function setupInputHooks() {
-  // 마우스 클릭 감지
-  uIOhook.on("click", (e) => {
-    if (!store.get("clickTrail.enabled")) return;
+  // 마우스 클릭 감지 (mousedown = 누르는 순간 반응)
+  uIOhook.on("mousedown", (e) => {
+    if (!cfg.clickTrail.enabled) return;
     sendToOverlay("click-trail", {
       x: e.x,
       y: e.y,
-      ...store.get("clickTrail"),
+      ...cfg.clickTrail,
     });
   });
 
   // 키보드 입력 감지
   uIOhook.on("keydown", (e) => {
-    if (!store.get("character.enabled")) return;
+    // 한/영 키 토글
+    if (e.keycode === HANGUL_KEYCODE) {
+      inputLang = inputLang === "ko" ? "en" : "ko";
+      console.log(`[lang] 한/영 토글 → ${inputLang}`);
+      return;
+    }
+    if (e.keycode === HANJA_KEYCODE) return;
 
-    const key = keycodeToChar(e.keycode);
+    if (!cfg.character.enabled) return;
+
+    const key = keycodeToChar(e.keycode, e.shiftKey);
     if (!key) return;
 
     const now = Date.now();
     recentKeyTimes.push(now);
-    // 최근 N초 내의 키 입력만 유지
-    recentKeyTimes = recentKeyTimes.filter(
-      (t) => now - t < SPEED_WINDOW_MS
-    );
+    recentKeyTimes = recentKeyTimes.filter((t) => now - t < SPEED_WINDOW_MS);
 
     const wpm = Math.round((recentKeyTimes.length / SPEED_WINDOW_MS) * 60000);
-
     sendToCharacter("key-typed", { key, wpm });
   });
 
-  uIOhook.start();
+  try {
+    uIOhook.start();
+    console.log("[uiohook] 입력 후킹 시작됨");
+  } catch (err) {
+    console.error("[uiohook] 시작 실패:", err.message);
+  }
 }
 
 // ─── 마우스 유휴 감지 ─────────────────────────────────
@@ -235,14 +293,14 @@ function startIdleDetection() {
   let rippleActive = false;
 
   setInterval(() => {
-    if (!store.get("idleRipple.enabled")) {
+    if (!cfg.idleRipple.enabled) {
       mouseIdleTime = 0;
       rippleActive = false;
       return;
     }
 
     const pos = screen.getCursorScreenPoint();
-    const threshold = store.get("idleRipple.idleSeconds") * 1000;
+    const threshold = cfg.idleRipple.idleSeconds * 1000;
 
     if (pos.x === lastMousePos.x && pos.y === lastMousePos.y) {
       mouseIdleTime += POLL_INTERVAL_MS;
@@ -252,8 +310,10 @@ function startIdleDetection() {
         sendToOverlay("ripple-start", {
           x: pos.x,
           y: pos.y,
-          color: store.get("idleRipple.color"),
-          interval: store.get("idleRipple.interval"),
+          effectType: cfg.idleRipple.effectType,
+          color: cfg.idleRipple.color,
+          size: cfg.idleRipple.size,
+          interval: cfg.idleRipple.interval,
         });
       }
     } else {
@@ -268,29 +328,27 @@ function startIdleDetection() {
 }
 
 // ─── 유틸리티 ─────────────────────────────────────────
-function getAggregatedBounds(displays) {
-  let minX = Infinity,
-    minY = Infinity,
-    maxX = -Infinity,
-    maxY = -Infinity;
-  for (const d of displays) {
-    minX = Math.min(minX, d.bounds.x);
-    minY = Math.min(minY, d.bounds.y);
-    maxX = Math.max(maxX, d.bounds.x + d.bounds.width);
-    maxY = Math.max(maxY, d.bounds.y + d.bounds.height);
-  }
-  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
-}
-
 function sendToOverlay(channel, data) {
-  if (overlayWindow && !overlayWindow.isDestroyed()) {
-    // 오버레이 좌표를 윈도우 로컬 좌표로 변환
-    const bounds = overlayWindow.getBounds();
-    overlayWindow.webContents.send(channel, {
-      ...data,
-      _offsetX: bounds.x,
-      _offsetY: bounds.y,
-    });
+  // 좌표가 있는 이벤트는 해당 모니터에만, 없으면 전체에 전송
+  for (const win of overlayWindows) {
+    if (win.isDestroyed()) continue;
+    const b = win._displayBounds;
+
+    if (data.x !== undefined && data.y !== undefined) {
+      // 이 모니터 영역 안에 좌표가 있는지 확인
+      if (data.x >= b.x && data.x < b.x + b.width &&
+          data.y >= b.y && data.y < b.y + b.height) {
+        win.webContents.send(channel, {
+          ...data,
+          _offsetX: b.x,
+          _offsetY: b.y,
+        });
+        return;
+      }
+    } else {
+      // 좌표 없는 이벤트 (ripple-stop 등)는 전체 전송
+      win.webContents.send(channel, { ...data, _offsetX: b.x, _offsetY: b.y });
+    }
   }
 }
 
@@ -300,29 +358,186 @@ function sendToCharacter(channel, data) {
   }
 }
 
-/** uiohook keycode → 표시할 문자 변환 */
-function keycodeToChar(keycode) {
-  // 알파벳
-  if (keycode >= UiohookKey.A && keycode <= UiohookKey.Z) {
-    return String.fromCharCode(65 + (keycode - UiohookKey.A));
+// ─── 한영 감지: 시작 시 koffi로 초기값 + 한/영 키 토글 ─
+let inputLang = "en";
+const HANGUL_KEYCODE = 0x70;
+const HANJA_KEYCODE = 0x71;
+
+// ─── 마우스 이동 (koffi → SetCursorPos) ──────────────
+let moveMouse = (x, y) => {};  // 기본: no-op
+
+function initMoveMouse() {
+  if (process.platform === "win32") {
+    try {
+      const koffi = require("koffi");
+      const user32 = koffi.load("user32.dll");
+      const SetCursorPos = user32.func("int __stdcall SetCursorPos(int x, int y)");
+      moveMouse = (x, y) => SetCursorPos(x, y);
+      console.log("[mouse] SetCursorPos 초기화 성공");
+    } catch (e) {
+      console.error("[mouse] SetCursorPos 실패:", e.message);
+    }
   }
-  // 숫자 (메인)
-  if (keycode >= UiohookKey[0] && keycode <= UiohookKey[9]) {
-    return String(keycode - UiohookKey[0]);
-  }
-  // 특수 키
-  const specialMap = {
-    [UiohookKey.Space]: "⎵",
-    [UiohookKey.Enter]: "↵",
-    [UiohookKey.Backspace]: "←",
-    [UiohookKey.Tab]: "⇥",
-    [UiohookKey.Escape]: "ESC",
-  };
-  return specialMap[keycode] || null;
 }
 
+function detectInitialInputLang() {
+  if (process.platform === "win32") {
+    try {
+      const koffi = require("koffi");
+      const user32 = koffi.load("user32.dll");
+      const GetForegroundWindow = user32.func("void* __stdcall GetForegroundWindow()");
+      const GetWindowThreadProcessId = user32.func("uint32 __stdcall GetWindowThreadProcessId(void* hwnd, uint32* pid)");
+      const GetKeyboardLayout = user32.func("intptr __stdcall GetKeyboardLayout(uint32 thread)");
+
+      const hwnd = GetForegroundWindow();
+      const pid = new Uint32Array(1);
+      const tid = GetWindowThreadProcessId(hwnd, pid);
+      const layout = GetKeyboardLayout(tid);
+      const langId = layout & 0xFFFF;
+      inputLang = langId === 0x0412 ? "ko" : "en";
+      console.log(`[lang] 초기 입력 언어 감지: ${inputLang} (0x${langId.toString(16)})`);
+    } catch (e) {
+      console.log("[lang] 초기 감지 실패, 기본값 en 사용");
+    }
+  }
+}
+
+// ─── 키코드 → 문자 매핑 ──────────────────────────────
+const ENGLISH_MAP = {
+  [UiohookKey.Q]: "Q", [UiohookKey.W]: "W", [UiohookKey.E]: "E",
+  [UiohookKey.R]: "R", [UiohookKey.T]: "T", [UiohookKey.Y]: "Y",
+  [UiohookKey.U]: "U", [UiohookKey.I]: "I", [UiohookKey.O]: "O",
+  [UiohookKey.P]: "P",
+  [UiohookKey.A]: "A", [UiohookKey.S]: "S", [UiohookKey.D]: "D",
+  [UiohookKey.F]: "F", [UiohookKey.G]: "G", [UiohookKey.H]: "H",
+  [UiohookKey.J]: "J", [UiohookKey.K]: "K", [UiohookKey.L]: "L",
+  [UiohookKey.Z]: "Z", [UiohookKey.X]: "X", [UiohookKey.C]: "C",
+  [UiohookKey.V]: "V", [UiohookKey.B]: "B", [UiohookKey.N]: "N",
+  [UiohookKey.M]: "M",
+};
+
+const KOREAN_MAP = {
+  [UiohookKey.Q]: "ㅂ", [UiohookKey.W]: "ㅈ", [UiohookKey.E]: "ㄷ",
+  [UiohookKey.R]: "ㄱ", [UiohookKey.T]: "ㅅ", [UiohookKey.Y]: "ㅛ",
+  [UiohookKey.U]: "ㅕ", [UiohookKey.I]: "ㅑ", [UiohookKey.O]: "ㅐ",
+  [UiohookKey.P]: "ㅔ",
+  [UiohookKey.A]: "ㅁ", [UiohookKey.S]: "ㄴ", [UiohookKey.D]: "ㅇ",
+  [UiohookKey.F]: "ㄹ", [UiohookKey.G]: "ㅎ", [UiohookKey.H]: "ㅗ",
+  [UiohookKey.J]: "ㅓ", [UiohookKey.K]: "ㅏ", [UiohookKey.L]: "ㅣ",
+  [UiohookKey.Z]: "ㅋ", [UiohookKey.X]: "ㅌ", [UiohookKey.C]: "ㅊ",
+  [UiohookKey.V]: "ㅍ", [UiohookKey.B]: "ㅠ", [UiohookKey.N]: "ㅜ",
+  [UiohookKey.M]: "ㅡ",
+};
+
+const KOREAN_SHIFT_MAP = {
+  [UiohookKey.Q]: "ㅃ", [UiohookKey.W]: "ㅉ", [UiohookKey.E]: "ㄸ",
+  [UiohookKey.R]: "ㄲ", [UiohookKey.T]: "ㅆ",
+  [UiohookKey.O]: "ㅒ", [UiohookKey.P]: "ㅖ",
+};
+
+const NUMBER_MAP = {
+  [UiohookKey[1]]: "1", [UiohookKey[2]]: "2", [UiohookKey[3]]: "3",
+  [UiohookKey[4]]: "4", [UiohookKey[5]]: "5", [UiohookKey[6]]: "6",
+  [UiohookKey[7]]: "7", [UiohookKey[8]]: "8", [UiohookKey[9]]: "9",
+  [UiohookKey[0]]: "0",
+};
+
+const SPECIAL_MAP = {
+  [UiohookKey.Space]: "⎵",
+  [UiohookKey.Enter]: "↵",
+  [UiohookKey.Backspace]: "←",
+  [UiohookKey.Tab]: "⇥",
+};
+
+function keycodeToChar(keycode, shiftKey) {
+  // 숫자
+  if (NUMBER_MAP[keycode]) return NUMBER_MAP[keycode];
+
+  // 특수 키
+  if (SPECIAL_MAP[keycode]) return SPECIAL_MAP[keycode];
+
+  // 알파벳 — 한영에 따라 분기
+  if (inputLang === "ko") {
+    if (shiftKey && KOREAN_SHIFT_MAP[keycode]) return KOREAN_SHIFT_MAP[keycode];
+    if (KOREAN_MAP[keycode]) return KOREAN_MAP[keycode];
+  }
+
+  // 영어 (기본) — 직접 매핑 테이블 사용
+  if (ENGLISH_MAP[keycode]) return ENGLISH_MAP[keycode];
+
+  return null;
+}
+
+// ─── 캐릭터 우클릭 설정 메뉴 ──────────────────────────
+ipcMain.on("show-character-menu", (event) => {
+  const menu = Menu.buildFromTemplate([
+    { label: "🐱 Mouse Finder 설정", enabled: false },
+    { type: "separator" },
+    {
+      label: "클릭 이펙트",
+      submenu: [
+        {
+          label: "화면 깨짐 (Crack)",
+          type: "radio",
+          checked: cfg.clickTrail.effectType === "crack",
+          click: () => { store.set("clickTrail.effectType", "crack"); },
+        },
+        {
+          label: "잔상 (Trail)",
+          type: "radio",
+          checked: cfg.clickTrail.effectType === "trail",
+          click: () => { store.set("clickTrail.effectType", "trail"); },
+        },
+      ],
+    },
+    {
+      label: "클릭 크랙 크기",
+      submenu: [
+        { label: "작게",  type: "radio", checked: cfg.clickTrail.crackSize <= 40,  click: () => store.set("clickTrail.crackSize", 30) },
+        { label: "보통",  type: "radio", checked: cfg.clickTrail.crackSize > 40 && cfg.clickTrail.crackSize <= 70, click: () => store.set("clickTrail.crackSize", 60) },
+        { label: "크게",  type: "radio", checked: cfg.clickTrail.crackSize > 70 && cfg.clickTrail.crackSize <= 120, click: () => store.set("clickTrail.crackSize", 100) },
+        { label: "최대",  type: "radio", checked: cfg.clickTrail.crackSize > 120, click: () => store.set("clickTrail.crackSize", 160) },
+      ],
+    },
+    { type: "separator" },
+    {
+      label: "유휴 이펙트",
+      submenu: [
+        {
+          label: "물결파동 (Ripple)",
+          type: "radio",
+          checked: cfg.idleRipple.effectType === "ripple",
+          click: () => store.set("idleRipple.effectType", "ripple"),
+        },
+        {
+          label: "화면 깨짐 (Crack)",
+          type: "radio",
+          checked: cfg.idleRipple.effectType === "crack",
+          click: () => store.set("idleRipple.effectType", "crack"),
+        },
+      ],
+    },
+    {
+      label: "유휴 이펙트 크기",
+      submenu: [
+        { label: "작게", type: "radio", checked: cfg.idleRipple.size <= 50,  click: () => store.set("idleRipple.size", 40) },
+        { label: "보통", type: "radio", checked: cfg.idleRipple.size > 50 && cfg.idleRipple.size <= 90, click: () => store.set("idleRipple.size", 80) },
+        { label: "크게", type: "radio", checked: cfg.idleRipple.size > 90 && cfg.idleRipple.size <= 140, click: () => store.set("idleRipple.size", 120) },
+        { label: "최대", type: "radio", checked: cfg.idleRipple.size > 140, click: () => store.set("idleRipple.size", 180) },
+      ],
+    },
+    { type: "separator" },
+    {
+      label: "종료",
+      click: () => { app.isQuitting = true; app.quit(); },
+    },
+  ]);
+
+  menu.popup({ window: characterWindow });
+});
+
 // ─── IPC 핸들러 ───────────────────────────────────────
-ipcMain.handle("get-config", () => store.store);
+ipcMain.handle("get-config", () => cfg);
 
 ipcMain.handle("move-mouse", (_, { x, y }) => {
   // Electron은 마우스 이동을 직접 지원하지 않으므로
@@ -332,16 +547,30 @@ ipcMain.handle("move-mouse", (_, { x, y }) => {
 
 // ─── 앱 라이프사이클 ──────────────────────────────────
 app.whenReady().then(() => {
-  createOverlayWindow();
-  createCharacterWindow();
-  createTray();
+  try {
+    createOverlayWindows();
+    console.log(`[app] 오버레이 윈도우 ${overlayWindows.length}개 생성됨`);
+  } catch (e) { console.error("[app] 오버레이 생성 실패:", e.message); }
+
+  try {
+    createCharacterWindow();
+    console.log("[app] 캐릭터 윈도우 생성됨");
+  } catch (e) { console.error("[app] 캐릭터 생성 실패:", e.message); }
+
+  try {
+    createTray();
+    console.log("[app] 시스템 트레이 생성됨");
+  } catch (e) { console.error("[app] 트레이 생성 실패:", e.message); }
+
+  detectInitialInputLang();
+  initMoveMouse();
   registerShortcuts();
   setupInputHooks();
   startIdleDetection();
 
-  console.log("Mouse Finder v2 실행 중!");
-  console.log(`  마우스 찾기: ${store.get("findMouseHotkey")}`);
-  console.log(`  순간이동: ${store.get("teleportHotkey")}`);
+  console.log("\nMouse Finder v2 실행 중!");
+  console.log(`  마우스 찾기: ${cfg.findMouseHotkey}`);
+  console.log(`  순간이동: ${cfg.teleportHotkey}`);
 });
 
 app.on("will-quit", () => {
@@ -349,7 +578,7 @@ app.on("will-quit", () => {
   uIOhook.stop();
 });
 
-app.on("window-all-closed", (e) => {
-  // 트레이에서 계속 실행
-  e.preventDefault?.();
+// Windows/Linux에서 모든 창이 닫혀도 앱이 종료되지 않도록
+app.on("window-all-closed", () => {
+  // 트레이에서 계속 실행 — 아무것도 하지 않음
 });

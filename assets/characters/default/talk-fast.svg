@@ -1,24 +1,41 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
-  <!-- 몸체 (약간 들뜬 느낌) -->
-  <ellipse cx="60" cy="66" rx="46" ry="43" fill="#6EC6FF" stroke="#3A9BD5" stroke-width="2"/>
-  <!-- 볼터치 (더 진하게) -->
-  <ellipse cx="26" cy="70" rx="11" ry="7" fill="#FFB3C1" opacity="0.7"/>
-  <ellipse cx="94" cy="70" rx="11" ry="7" fill="#FFB3C1" opacity="0.7"/>
-  <!-- 왼쪽 눈 (반짝, 별 모양) -->
-  <ellipse cx="42" cy="56" rx="7" ry="8" fill="#2C3E50"/>
-  <!-- 오른쪽 눈 -->
-  <ellipse cx="78" cy="56" rx="7" ry="8" fill="#2C3E50"/>
-  <!-- 눈 하이라이트 (크게) -->
-  <circle cx="45" cy="53" r="3" fill="white"/>
-  <circle cx="81" cy="53" r="3" fill="white"/>
-  <circle cx="40" cy="57" r="1.5" fill="white"/>
-  <circle cx="76" cy="57" r="1.5" fill="white"/>
-  <!-- 입 (크게 벌림) -->
-  <ellipse cx="60" cy="80" rx="12" ry="10" fill="#2C3E50"/>
-  <ellipse cx="60" cy="78" rx="9" ry="6" fill="#FF8A9E"/>
   <!-- 흥분 이펙트 -->
-  <line x1="15" y1="40" x2="8" y2="35" stroke="#FFD700" stroke-width="2" stroke-linecap="round"/>
-  <line x1="105" y1="40" x2="112" y2="35" stroke="#FFD700" stroke-width="2" stroke-linecap="round"/>
-  <line x1="12" y1="50" x2="4" y2="50" stroke="#FFD700" stroke-width="2" stroke-linecap="round"/>
-  <line x1="108" y1="50" x2="116" y2="50" stroke="#FFD700" stroke-width="2" stroke-linecap="round"/>
+  <line x1="10" y1="20" x2="2" y2="14" stroke="#FFD700" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="110" y1="20" x2="118" y2="14" stroke="#FFD700" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="6" y1="32" x2="0" y2="32" stroke="#FFD700" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="114" y1="32" x2="120" y2="32" stroke="#FFD700" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- 꼬리 (위로 세움!) -->
+  <path d="M92 80 Q100 50 95 25 Q94 20 90 22" fill="none" stroke="#F5A623" stroke-width="4" stroke-linecap="round"/>
+  <!-- 몸체 (살짝 들뜬) -->
+  <ellipse cx="60" cy="76" rx="38" ry="32" fill="#F5A623"/>
+  <!-- 머리 -->
+  <circle cx="60" cy="46" r="28" fill="#F5A623"/>
+  <!-- 귀 (쫑긋 최대) -->
+  <polygon points="35,24 22,-4 48,18" fill="#F5A623" stroke="#E8961E" stroke-width="1"/>
+  <polygon points="37,22 27,2 46,18" fill="#FFD4D4"/>
+  <polygon points="85,24 98,-4 72,18" fill="#F5A623" stroke="#E8961E" stroke-width="1"/>
+  <polygon points="83,22 93,2 74,18" fill="#FFD4D4"/>
+  <!-- 눈 (별 모양 반짝) -->
+  <ellipse cx="48" cy="42" rx="6" ry="7" fill="#2C3E50"/>
+  <ellipse cx="72" cy="42" rx="6" ry="7" fill="#2C3E50"/>
+  <circle cx="50" cy="39" r="2.5" fill="white"/>
+  <circle cx="74" cy="39" r="2.5" fill="white"/>
+  <circle cx="46" cy="43" r="1.2" fill="white"/>
+  <circle cx="70" cy="43" r="1.2" fill="white"/>
+  <!-- 볼터치 (진하게) -->
+  <ellipse cx="34" cy="54" rx="7" ry="5" fill="#FFB3C1" opacity="0.7"/>
+  <ellipse cx="86" cy="54" rx="7" ry="5" fill="#FFB3C1" opacity="0.7"/>
+  <!-- 코 -->
+  <ellipse cx="60" cy="51" rx="3" ry="2" fill="#FF8A9E"/>
+  <!-- 입 (최대로 벌림!) -->
+  <ellipse cx="60" cy="58" rx="9" ry="7" fill="#2C3E50"/>
+  <ellipse cx="60" cy="56" rx="7" ry="4.5" fill="#FF6B81"/>
+  <!-- 수염 (벌어짐) -->
+  <line x1="22" y1="48" x2="38" y2="52" stroke="#2C3E50" stroke-width="1" opacity="0.5"/>
+  <line x1="22" y1="56" x2="38" y2="54" stroke="#2C3E50" stroke-width="1" opacity="0.5"/>
+  <line x1="82" y1="52" x2="98" y2="48" stroke="#2C3E50" stroke-width="1" opacity="0.5"/>
+  <line x1="82" y1="54" x2="98" y2="56" stroke="#2C3E50" stroke-width="1" opacity="0.5"/>
+  <!-- 앞발 (들어올림) -->
+  <ellipse cx="42" cy="96" rx="10" ry="6" fill="#F5A623" transform="rotate(-10 42 96)"/>
+  <ellipse cx="78" cy="96" rx="10" ry="6" fill="#F5A623" transform="rotate(10 78 96)"/>
 </svg>

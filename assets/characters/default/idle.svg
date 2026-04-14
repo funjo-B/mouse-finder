@@ -1,16 +1,32 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <!-- 꼬리 -->
+  <path d="M95 85 Q115 70 108 50 Q104 40 96 45" fill="none" stroke="#F5A623" stroke-width="4" stroke-linecap="round"/>
   <!-- 몸체 -->
-  <ellipse cx="60" cy="68" rx="45" ry="42" fill="#6EC6FF" stroke="#3A9BD5" stroke-width="2"/>
-  <!-- 볼터치 -->
-  <ellipse cx="30" cy="72" rx="10" ry="6" fill="#FFB3C1" opacity="0.5"/>
-  <ellipse cx="90" cy="72" rx="10" ry="6" fill="#FFB3C1" opacity="0.5"/>
-  <!-- 왼쪽 눈 -->
-  <ellipse cx="42" cy="60" rx="5" ry="6" fill="#2C3E50"/>
-  <!-- 오른쪽 눈 -->
-  <ellipse cx="78" cy="60" rx="5" ry="6" fill="#2C3E50"/>
-  <!-- 눈 하이라이트 -->
-  <circle cx="44" cy="57" r="2" fill="white"/>
-  <circle cx="80" cy="57" r="2" fill="white"/>
+  <ellipse cx="60" cy="78" rx="38" ry="32" fill="#F5A623"/>
+  <!-- 머리 -->
+  <circle cx="60" cy="48" r="28" fill="#F5A623"/>
+  <!-- 왼쪽 귀 -->
+  <polygon points="36,28 28,4 48,22" fill="#F5A623" stroke="#E8961E" stroke-width="1"/>
+  <polygon points="38,26 32,10 46,22" fill="#FFD4D4"/>
+  <!-- 오른쪽 귀 -->
+  <polygon points="84,28 92,4 72,22" fill="#F5A623" stroke="#E8961E" stroke-width="1"/>
+  <polygon points="82,26 88,10 74,22" fill="#FFD4D4"/>
+  <!-- 눈 -->
+  <ellipse cx="48" cy="46" rx="4" ry="5" fill="#2C3E50"/>
+  <ellipse cx="72" cy="46" rx="4" ry="5" fill="#2C3E50"/>
+  <circle cx="49.5" cy="43.5" r="1.5" fill="white"/>
+  <circle cx="73.5" cy="43.5" r="1.5" fill="white"/>
+  <!-- 코 -->
+  <ellipse cx="60" cy="54" rx="3" ry="2" fill="#FF8A9E"/>
   <!-- 입 (미소) -->
-  <path d="M50 78 Q60 86 70 78" fill="none" stroke="#2C3E50" stroke-width="2" stroke-linecap="round"/>
+  <path d="M54 57 Q57 61 60 57" fill="none" stroke="#2C3E50" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M60 57 Q63 61 66 57" fill="none" stroke="#2C3E50" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- 수염 -->
+  <line x1="28" y1="50" x2="42" y2="52" stroke="#2C3E50" stroke-width="1" opacity="0.4"/>
+  <line x1="28" y1="56" x2="42" y2="55" stroke="#2C3E50" stroke-width="1" opacity="0.4"/>
+  <line x1="78" y1="52" x2="92" y2="50" stroke="#2C3E50" stroke-width="1" opacity="0.4"/>
+  <line x1="78" y1="55" x2="92" y2="56" stroke="#2C3E50" stroke-width="1" opacity="0.4"/>
+  <!-- 앞발 -->
+  <ellipse cx="45" cy="100" rx="10" ry="6" fill="#F5A623"/>
+  <ellipse cx="75" cy="100" rx="10" ry="6" fill="#F5A623"/>
 </svg>
