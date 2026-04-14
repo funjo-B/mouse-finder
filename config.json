@@ -1,13 +1,26 @@
 {
-  "find_mouse_hotkey": "ctrl+alt+f",
-  "teleport_hotkey": "ctrl+alt+t",
-  "teleport_position": {
-    "x": 960,
-    "y": 540
+  "findMouseHotkey": "CommandOrControl+Alt+F",
+  "teleportHotkey": "CommandOrControl+Alt+T",
+  "teleportPosition": { "x": 960, "y": 540 },
+  "beacon": {
+    "color": "#FF4444",
+    "size": 120,
+    "duration": 1.5
   },
-  "beacon_color": "#FF4444",
-  "beacon_size": 120,
-  "beacon_duration": 1.5,
-  "beacon_ring_width": 4,
-  "autostart": false
+  "clickTrail": {
+    "enabled": true,
+    "count": 3,
+    "color": "#FF4444",
+    "fadeDuration": 1.0
+  },
+  "idleRipple": {
+    "enabled": true,
+    "idleSeconds": 3,
+    "color": "#4488FF",
+    "interval": 2.0
+  },
+  "character": {
+    "enabled": true,
+    "position": "bottom-right"
+  }
 }

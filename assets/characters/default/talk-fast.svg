@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <!-- 몸체 (약간 들뜬 느낌) -->
+  <ellipse cx="60" cy="66" rx="46" ry="43" fill="#6EC6FF" stroke="#3A9BD5" stroke-width="2"/>
+  <!-- 볼터치 (더 진하게) -->
+  <ellipse cx="26" cy="70" rx="11" ry="7" fill="#FFB3C1" opacity="0.7"/>
+  <ellipse cx="94" cy="70" rx="11" ry="7" fill="#FFB3C1" opacity="0.7"/>
+  <!-- 왼쪽 눈 (반짝, 별 모양) -->
+  <ellipse cx="42" cy="56" rx="7" ry="8" fill="#2C3E50"/>
+  <!-- 오른쪽 눈 -->
+  <ellipse cx="78" cy="56" rx="7" ry="8" fill="#2C3E50"/>
+  <!-- 눈 하이라이트 (크게) -->
+  <circle cx="45" cy="53" r="3" fill="white"/>
+  <circle cx="81" cy="53" r="3" fill="white"/>
+  <circle cx="40" cy="57" r="1.5" fill="white"/>
+  <circle cx="76" cy="57" r="1.5" fill="white"/>
+  <!-- 입 (크게 벌림) -->
+  <ellipse cx="60" cy="80" rx="12" ry="10" fill="#2C3E50"/>
+  <ellipse cx="60" cy="78" rx="9" ry="6" fill="#FF8A9E"/>
+  <!-- 흥분 이펙트 -->
+  <line x1="15" y1="40" x2="8" y2="35" stroke="#FFD700" stroke-width="2" stroke-linecap="round"/>
+  <line x1="105" y1="40" x2="112" y2="35" stroke="#FFD700" stroke-width="2" stroke-linecap="round"/>
+  <line x1="12" y1="50" x2="4" y2="50" stroke="#FFD700" stroke-width="2" stroke-linecap="round"/>
+  <line x1="108" y1="50" x2="116" y2="50" stroke="#FFD700" stroke-width="2" stroke-linecap="round"/>
+</svg>
